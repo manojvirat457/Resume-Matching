@@ -1,11 +1,11 @@
-from scripts import tabledef
-from scripts import forms
-from scripts import helpers
+# from scripts import tabledef
+# from scripts import forms
+# from scripts import helpers
 from flask import Flask, redirect, url_for, render_template, request, session
 import json
 import sys
 import os
-import stripe
+# import stripe
 import pandas as pd
 from werkzeug.utils import secure_filename
 from sklearn.preprocessing import PolynomialFeatures
@@ -14,7 +14,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
-
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
 import numpy as np
 import pandas as pd
 
@@ -24,118 +25,84 @@ import jieba.analyse
 import csv
 import ast
 
+import sys
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfpage import PDFPage
+from pdfminer.converter import XMLConverter, HTMLConverter, TextConverter
+from pdfminer.layout import LAParams
+import io
+
 app = Flask(__name__)
-app.secret_key = os.urandom(12)  # Generic key for dev purposes only
+# app.secret_key = os.urandom(12)  # Generic key for dev purposes only
 
-stripe_keys = {
-  'secret_key': os.environ['secret_key'],
-  'publishable_key': os.environ['publishable_key']
-}
+# stripe_keys = {
+#   'secret_key': os.environ['secret_key'],
+#   'publishable_key': os.environ['publishable_key']
+# }
 
-stripe.api_key = stripe_keys['secret_key']
+# stripe.api_key = stripe_keys['secret_key']
 
 # Heroku
 #from flask_heroku import Heroku
 #heroku = Heroku(app)
 
+
 # ======== Routing =========================================================== #
 # -------- Login ------------------------------------------------------------- #
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    if not session.get('logged_in'):
-        form = forms.LoginForm(request.form)
-        if request.method == 'POST':
-            username = request.form['username'].lower()
-            password = request.form['password']
-            if form.validate():
-                if helpers.credentials_valid(username, password):
-                    session['logged_in'] = True
-                    session['username'] = username
-                    return json.dumps({'status': 'Login successful'})
-                return json.dumps({'status': 'Invalid user/pass'})
-            return json.dumps({'status': 'Both fields required'})
-        return render_template('login.html', form=form)
-    user = helpers.get_user()
-    user.active = user.payment == helpers.payment_token()
-    user.key = stripe_keys['publishable_key']
-    return render_template('home.html', user=user)
+    # creating a pdf file object
 
-# -------- Signup ---------------------------------------------------------- #
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if not session.get('logged_in'):
-        form = forms.LoginForm(request.form)
-        if request.method == 'POST':
-            username = request.form['username'].lower()
-            password = helpers.hash_password(request.form['password'])
-            email = request.form['email']
-            if form.validate():
-                if not helpers.username_taken(username):
-                    helpers.add_user(username, password, email)
-                    session['logged_in'] = True
-                    session['username'] = username
-                    return json.dumps({'status': 'Signup successful'})
-                return json.dumps({'status': 'Username taken'})
-            return json.dumps({'status': 'User/Pass required'})
-        return render_template('login.html', form=form)
-    return redirect(url_for('login'))
+    basepath = os.path.dirname(__file__)
+
+    file_path = os.path.join(basepath, 'uploads', 'sample.pdf')
+
+    fp = open(file_path, 'rb')
+    rsrcmgr = PDFResourceManager()
+    retstr = io.StringIO()
+    laparams = LAParams()
+    device = TextConverter(rsrcmgr, retstr, laparams=laparams)
+    # Create a PDF interpreter object.
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    # Process each page contained in the document.
+
+    for page in PDFPage.get_pages(fp):
+        interpreter.process_page(page)
+        data = retstr.getvalue()
+
+    print(data)
+
+    return render_template('home.html', user="manoj")
+    # return text
 
 
-# -------- Settings ---------------------------------------------------------- #
-@app.route('/settings', methods=['GET', 'POST'])
-def settings():
-    if session.get('logged_in'):
-        if request.method == 'POST':
-            password = request.form['password']
-            if password != "":
-                password = helpers.hash_password(password)
-            email = request.form['email']
-            helpers.change_user(password=password, email=email)
-            return json.dumps({'status': 'Saved'})
-        user = helpers.get_user()
-        return render_template('settings.html', user=user)
-    return redirect(url_for('login'))
+def getFile():
+    Tk().withdraw()
+    filename = askopenfilename()
+    Tk.close()
+    return filename
 
-# -------- Charge ---------------------------------------------------------- #
-@app.route('/charge', methods=['POST'])
-def charge():
-    if session.get('logged_in'):
-        user = helpers.get_user()
-        try:
-            amount = 1000   # amount in cents
-            customer = stripe.Customer.create(
-                email= user.email,
-                source=request.form['stripeToken']
-            )
-            stripe.Charge.create(
-                customer=customer.id,
-                amount=amount,
-                currency='usd',
-                description='Resume Scanner Donation'
-            )
-            helpers.change_user(payment=helpers.payment_token())
-            user.active = True
-            return render_template('home.html', user=user)
-        except stripe.error.StripeError:
-            return render_template('error.html')
 
 @app.route("/logout")
 def logout():
     session['logged_in'] = False
     return redirect(url_for('login'))
 
+
 @app.route('/predict', methods=['GET', 'POST'])
 def upload():
-    if request.method == 'POST':
-        f = request.files['file']
+    if request.method == 'GET':
+        # f = request.files['file']
 
         basepath = os.path.dirname(__file__)
-        file_path = os.path.join(
-            basepath, 'uploads', secure_filename(f.filename))
-        f.save(file_path)
+        # file_path = os.path.join(
+        #     basepath, 'uploads', secure_filename(f.filename))
+        # f.save(file_path)
+
+        file_path = os.path.join(basepath, 'uploads', 'test-upload.csv')
 
         df = pd.read_csv(file_path)
-        
+
         seg_list01 = df['job-description']
         seg_list02 = df['your-resume']
 
@@ -151,17 +118,31 @@ def upload():
         sparse_matrix = count_vectorizer.fit_transform(documents)
 
         doc_term_matrix = sparse_matrix.todense()
-        df = pd.DataFrame(doc_term_matrix, 
-                  columns=count_vectorizer.get_feature_names(), 
-                  index=['item01', 'item02'])
+
+        df = pd.DataFrame(doc_term_matrix,
+                          columns=count_vectorizer.get_feature_names(),
+                          index=['item01', 'item02'])
+
+        df.to_csv(os.path.join(basepath, 'uploads', 'result.csv'))
+
+        read_file = pd.read_csv(os.path.join(basepath, 'uploads',
+                                             'result.csv'))
+        read_file.to_excel(os.path.join(basepath, 'uploads', 'result.xlsx'),
+                           index=None,
+                           header=True)
 
         answer = cosine_similarity(df, df)
+
+        print("CSV Created Successfully")
         answer = pd.DataFrame(answer)
-        answer = answer.iloc[[1],[0]].values[0]
-        answer = round(float(answer),4)*100
-        
-        return "Your resume matched " + str(answer) + " %" + " of the job-description!"
+
+        answer = answer.iloc[[1], [0]].values[0]
+        answer = round(float(answer), 4) * 100
+
+        return "Your resume matched " + str(
+            answer) + " %" + " of the job-description!"
     return None
+
 
 # ======== Main ============================================================== #
 if __name__ == "__main__":
